@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bot-drop",
+  "main": "src/index.js",
+  "compatibility_date": "2025-09-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  "r2_buckets": [
+    { "binding": "DROP", "bucket_name": "bot-drop" }
+  ],
+  // Non-secret display setting. TEAM_DOMAIN and POLICY_AUD are set with
+  // `wrangler secret put` (see README) so they survive deploys and stay out
+  // of the repo. DEV_SKIP_ACCESS belongs only in a local .dev.vars file.
+  "vars": {
+    "DISPLAY_TZ": "Asia/Bangkok"
+  }
+}

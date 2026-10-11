@@ -1,0 +1,3 @@
+# Copy to .dev.vars for `npm run dev`. Never set this in production; the
+# Worker only honours it for requests to localhost / 127.0.0.1 anyway.
+DEV_SKIP_ACCESS=1
