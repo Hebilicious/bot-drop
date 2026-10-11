@@ -49,4 +49,13 @@ assert.equal((await call(null, { DROP: null, DEV_SKIP_ACCESS: "1" }))[0], 503);
 assert.equal((await call(null, { DROP: null, DEV_SKIP_ACCESS: "1" }, "localhost:8787"))[0], 200);
 // TEAM_DOMAIN given with scheme/trailing slash still works.
 assert.equal((await call(await sign(good), { ...env, TEAM_DOMAIN: `https://${TEAM}/` }))[0], 200);
+// DELETE: service tokens are refused, human logins allowed.
+const store = new Set(["bot/2026-01-01/000000-a.html"]);
+const DROP = { head: async (k) => (store.has(k) ? { key: k } : null), delete: async (k) => store.delete(k) };
+const del = async (token) => (await worker.fetch(new Request("https://bot-drop.x.workers.dev/api/files/bot/2026-01-01/000000-a.html",
+  { method: "DELETE", headers: { "Cf-Access-Jwt-Assertion": token } }), { ...env, DROP })).status;
+assert.equal(await del(await sign({ ...good, email: undefined, common_name: "abc.access" })), 403);
+assert.equal(store.size, 1);
+assert.equal(await del(await sign(good)), 200);
+assert.equal(store.size, 0);
 console.log(`jwt tests passed (cert fetches: ${certFetches})`);

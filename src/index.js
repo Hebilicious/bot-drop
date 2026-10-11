@@ -117,7 +117,14 @@ async function handle(request, env) {
   if (path === "/api/list" && method === "GET") return listApi(env, url);
   if (path.startsWith("/api/files/")) {
     const key = keyFromPath(path, "/api/files/");
-    if (method === "DELETE") return deleteFile(env, key);
+    if (method === "DELETE") {
+      // Bots (service tokens) may upload but not delete; only a human login
+      // (an Access identity with an email) or local dev can delete.
+      if (!identity.email && !identity.local) {
+        return json({ error: "delete is only allowed for signed-in users, not service tokens" }, 403);
+      }
+      return deleteFile(env, key);
+    }
     if (method === "GET") return fileInfo(env, key, url);
     return json({ error: "method not allowed" }, 405, { Allow: "GET, DELETE" });
   }
@@ -140,7 +147,7 @@ async function authenticate(request, env, url) {
   // localhost/127.0.0.1, so setting it in production does nothing.
   const localHost = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
   if (env.DEV_SKIP_ACCESS === "1" && localHost) {
-    return { label: "dev-local (access check skipped)", email: null, service: null };
+    return { label: "dev-local (access check skipped)", email: null, service: null, local: true };
   }
 
   const teamDomain = normaliseTeamDomain(env.TEAM_DOMAIN);

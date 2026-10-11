@@ -34,7 +34,7 @@ front. No database, no build step, no runtime dependencies.
 | `POST` | `/api/upload?bot=<name>&name=<filename>` | Upload a file as the raw body, or as multipart field `file` (then `name` is optional). Max 25 MB. Returns `201 {key, size, contentType, title, url, viewUrl}`. |
 | `GET` | `/api/list?bot=&prefix=&limit=` | JSON list, newest first. `prefix` is relative to the bot when `bot` is set (e.g. `bot=grocery-scout&prefix=2026-10`). `limit` defaults to 200 (max 5000). |
 | `GET` | `/api/files/<key>` | JSON metadata for one file. |
-| `DELETE` | `/api/files/<key>` | Delete a file. |
+| `DELETE` | `/api/files/<key>` | Delete a file. Only signed-in people (an Access identity with an email) can delete; service tokens get `403`, so bots can upload but not delete. |
 | `GET` | `/api/health` | `{ok, identity, time}`. Also handy for checking a token. |
 | `GET` | `/` | Index page: newest first, grouped by date, filter by bot (`/?bot=...`). Shows title, bot, time and size. |
 | `GET` | `/v/<key>` | Viewer page: a header (title, bot, time, open raw, download, delete) above the file in a sandboxed iframe. This is `viewUrl`. |
@@ -132,6 +132,27 @@ Until steps 4 and 5 are done, every request gets `503 Access not configured`.
    * **Application Audience (AUD) tag**: *Zero Trust → Access →
      Applications → bot-drop → Overview / Basic information*.
 
+<details><summary>Doing step 4 with the API instead of the dashboard</summary>
+
+With an API token that has *Access: Apps and Policies Edit* and *Access:
+Service Tokens Edit*:
+
+```sh
+API=https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/access
+H=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json")
+curl -s "${H[@]}" $API/identity_providers            # note the onetimepin id
+curl -s "${H[@]}" -X POST $API/service_tokens -d '{"name":"grok-bots","duration":"8760h"}'
+curl -s "${H[@]}" -X POST $API/apps -d '{
+  "name":"bot-drop","type":"self_hosted","domain":"bot-drop.<account-subdomain>.workers.dev",
+  "session_duration":"24h","allowed_idps":["<onetimepin id>"],"auto_redirect_to_identity":true,
+  "policies":[
+    {"name":"Heb","decision":"allow","include":[{"email":{"email":"<heb's email>"}}],"precedence":1},
+    {"name":"grok-bots","decision":"non_identity","include":[{"service_token":{"token_id":"<service token id>"}}],"precedence":2}
+  ]}'                                                  # the response has the "aud" tag
+```
+
+</details>
+
 ### 5. Tell the Worker about Access
 
 These are stored as Worker secrets, so they stay out of the repo and survive
@@ -165,6 +186,25 @@ export CF_ACCESS_CLIENT_ID=...       # from step 4.3
 export CF_ACCESS_CLIENT_SECRET=...
 
 scripts/drop.sh grocery-scout reports/2026-10-11.html
+# -> https://bot-drop.<account-subdomain>.workers.dev/v/grocery-scout/2026-10-11/091223-2026-10-11.html
+```
+
+`drop.sh` prints the `viewUrl` (use `--json` for the full response) and
+exits non-zero with a message if the upload fails, including when Access
+answers with a login redirect because the token is missing or wrong. If
+`BOT_DROP_URL`/`CF_ACCESS_CLIENT_ID` aren't set, it sources `$BOT_DROP_ENV`,
+or a file named `env` next to the script (symlinks are followed), so you can
+install it once for several bots:
+
+```sh
+mkdir -p /opt/bot-drop && cp scripts/drop.sh /opt/bot-drop/drop.sh
+cat > /opt/bot-drop/env <<'ENV'
+export BOT_DROP_URL=https://bot-drop.<account-subdomain>.workers.dev
+export CF_ACCESS_CLIENT_ID=...
+export CF_ACCESS_CLIENT_SECRET=...
+ENV
+ln -s /opt/bot-drop/drop.sh /usr/local/bin/bot-drop
+bot-drop grocery-scout report.html
 ```
 
 Or use curl directly:
